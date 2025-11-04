@@ -13,7 +13,9 @@ import { SettingsPage } from './pages/SettingsPage';
 import { Toaster } from './components/ui/sonner';
 import React from 'react';
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return !!localStorage.getItem('token');
+  });
   const [userRole, setUserRole] = useState('super-admin');
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);

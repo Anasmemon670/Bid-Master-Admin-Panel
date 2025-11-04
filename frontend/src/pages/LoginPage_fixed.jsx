@@ -10,46 +10,29 @@ import React from 'react';
 
 const BASE_URL = import.meta.env.REACT_APP_BASE_URL || import.meta.env.VITE_BASE_URL || 'http://localhost:5000';
 
-/**
- * Normalize Iraq phone number
- * Supports: +964, 964, 00964, or leading 0 (e.g., 07701234567)
- */
+// Normalize Iraq phone number
 function normalizeIraqPhone(phone) {
   if (!phone) return null;
   
-  // Remove spaces and special characters except +
   let cleaned = phone.replace(/[\s-]/g, '');
   
-  // If starts with 0, replace with +964 (e.g., 07701234567 → +9647701234567)
   if (cleaned.startsWith('0')) {
     cleaned = '+964' + cleaned.substring(1);
-  }
-  // If starts with 00964, replace with +964
-  else if (cleaned.startsWith('00964')) {
+  } else if (cleaned.startsWith('00964')) {
     cleaned = '+964' + cleaned.substring(5);
-  }
-  // If starts with 964, add +
-  else if (cleaned.startsWith('964')) {
+  } else if (cleaned.startsWith('964')) {
     cleaned = '+' + cleaned;
-  }
-  // If doesn't start with +964, return null
-  else if (!cleaned.startsWith('+964')) {
+  } else if (!cleaned.startsWith('+964')) {
     return null;
   }
   
   return cleaned;
 }
 
-/**
- * Validate Iraq phone number
- * Must start with +964, 964, 00964, or 0
- * Format: +964 followed by 9-10 digits
- */
+// Validate Iraq phone number
 function isValidIraqPhone(phone) {
   const normalized = normalizeIraqPhone(phone);
   if (!normalized) return false;
-  
-  // Iraq phone format: +964 followed by 9-10 digits
   const phoneRegex = /^\+964[0-9]{9,10}$/;
   return phoneRegex.test(normalized);
 }
@@ -96,7 +79,6 @@ export function LoginPage({ onLogin }) {
 
     setLoading(true);
     try {
-      // Normalize phone before sending to backend
       const normalizedPhone = normalizeIraqPhone(phone);
       const response = await axios.post(`${BASE_URL}/api/auth/send-otp`, {
         phone: normalizedPhone
@@ -105,12 +87,6 @@ export function LoginPage({ onLogin }) {
       if (response.data.success) {
         setOtpSent(true);
         setResendCooldown(30);
-        // Auto-fill OTP from response (for dev/testing)
-        if (response.data.otp) {
-          setOtp(response.data.otp);
-        } else {
-          setOtp('');
-        }
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to send OTP. Please try again.');
@@ -125,7 +101,6 @@ export function LoginPage({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-      // Normalize phone before sending to backend
       const normalizedPhone = normalizeIraqPhone(phone);
       const response = await axios.post(`${BASE_URL}/api/auth/send-otp`, {
         phone: normalizedPhone
@@ -133,12 +108,7 @@ export function LoginPage({ onLogin }) {
 
       if (response.data.success) {
         setResendCooldown(30);
-        // Auto-fill OTP from response (for dev/testing)
-        if (response.data.otp) {
-          setOtp(response.data.otp);
-        } else {
-          setOtp('');
-        }
+        setOtp('');
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to resend OTP. Please try again.');
@@ -158,7 +128,6 @@ export function LoginPage({ onLogin }) {
 
     setLoading(true);
     try {
-      // Normalize phone before sending to backend
       const normalizedPhone = normalizeIraqPhone(phone);
       const response = await axios.post(`${BASE_URL}/api/auth/verify-otp`, {
         phone: normalizedPhone,
@@ -167,13 +136,10 @@ export function LoginPage({ onLogin }) {
 
       if (response.data.success && response.data.token) {
         localStorage.setItem('token', response.data.token);
-        onLogin(selectedRole);
-        // Redirect to dashboard
         window.location.href = '/';
       }
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Invalid or expired OTP. Please try again.';
-      setError(errorMessage);
+      setError(err.response?.data?.error || 'Invalid or expired OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -209,7 +175,7 @@ export function LoginPage({ onLogin }) {
   }), React.createElement(Input, {
     id: "phone",
     type: "tel",
-    placeholder: "+9647701234567",
+    placeholder: "+96477xxxxxxxx",
     className: "pl-10",
     value: phone,
     onChange: handlePhoneChange,
@@ -224,11 +190,11 @@ export function LoginPage({ onLogin }) {
   }, React.createElement("button", {
     type: "button",
     onClick: () => setSelectedRole('super-admin'),
-    className: "p-3 rounded-lg border-2 transition-all text-left " + (selectedRole === 'super-admin' ? "border-blue-600 bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-gray-800 hover:border-blue-300")
+    className: `p-3 rounded-lg border-2 transition-all text-left ${selectedRole === 'super-admin' ? 'border-blue-600 bg-blue-50 dark:bg-blue-950' : 'border-gray-200 dark:border-gray-800 hover:border-blue-300'`
   }, React.createElement("div", {
     className: "flex items-center gap-3"
   }, React.createElement("div", {
-className: "w-8 h-8 rounded-lg flex items-center justify-center " + (selectedRole === 'super-admin' ? "bg-blue-600" : "bg-gray-200 dark:bg-gray-700")
+    className: `w-8 h-8 rounded-lg flex items-center justify-center ${selectedRole === 'super-admin' ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}`
   }, React.createElement(Shield, {
     className: `h-4 w-4 ${selectedRole === 'super-admin' ? 'text-white' : 'text-gray-600'}`
   })), React.createElement("div", {
@@ -301,10 +267,9 @@ className: "w-8 h-8 rounded-lg flex items-center justify-center " + (selectedRol
     className: "text-xs text-green-700 dark:text-green-400"
   }, "Secured with JWT Authentication & HTTPS")), React.createElement(Button, {
     type: "submit",
-className: "w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
-disabled: loading
-}, loading ? "Sending..." : "Send OTP"))
- : React.createElement(React.Fragment, null, React.createElement("div", {
+    className: "w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700",
+    disabled: loading
+  }, loading ? "Sending..." : "Send OTP"))) : React.createElement(React.Fragment, null, React.createElement("div", {
     className: "space-y-2"
   }, React.createElement(Label, {
     htmlFor: "otp"
@@ -324,7 +289,7 @@ disabled: loading
     disabled: loading
   }), React.createElement("p", {
     className: "text-xs text-gray-500 dark:text-gray-400 text-center"
-  }, "OTP sent. Check your SMS or backend console for the code.")), React.createElement("div", {
+  }, "Mock OTP = 123456 (Development Only)")), React.createElement("div", {
     className: "flex items-center justify-between"
   }, React.createElement("button", {
     type: "button",
@@ -355,6 +320,4 @@ disabled: loading
     className: "text-center text-xs text-gray-500 mt-6"
   }, "Protected by BidMaster Security © 2025")));
 }
-
-
 
