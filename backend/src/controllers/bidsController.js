@@ -1,4 +1,6 @@
 import pool from "../config/db.js";
+import { updateProductBidInFirestore } from "../services/firestoreService.js";
+import { sendBidNotification } from "../services/fcmService.js";
 
 export const BidsController = {
   // POST /api/bids/place
@@ -105,10 +107,48 @@ export const BidsController = {
 
         await pool.query('COMMIT');
 
+        const bidData = bidResult.rows[0];
+
+        // Update Firestore for real-time bid updates
+        try {
+          await updateProductBidInFirestore(productId, {
+            amount: parseFloat(amount),
+            bidder_id: buyerId,
+            bidder_name: req.user.name
+          });
+        } catch (firestoreError) {
+          console.warn("Failed to update Firestore:", firestoreError);
+          // Don't fail the request if Firestore fails
+        }
+
+        // Send FCM notifications
+        try {
+          // Notify previous highest bidder if they were outbid
+          if (product.highest_bidder_id && product.highest_bidder_id !== buyerId) {
+            await sendBidNotification(
+              product.highest_bidder_id,
+              'outbid',
+              { id: productId, title: product.title, current_bid: amount },
+              { amount: amount }
+            );
+          }
+
+          // Notify seller about new bid
+          await sendBidNotification(
+            product.seller_id,
+            'new_bid',
+            { id: productId, title: product.title, current_bid: amount },
+            { amount: amount }
+          );
+        } catch (notificationError) {
+          console.warn("Failed to send notifications:", notificationError);
+          // Don't fail the request if notifications fail
+        }
+
         res.status(201).json({
           success: true,
           message: "Bid placed successfully",
-          data: bidResult.rows[0]
+          data: bidData
         });
       } catch (error) {
         await pool.query('ROLLBACK');

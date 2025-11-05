@@ -2,6 +2,11 @@ import jwt from "jsonwebtoken";
 import { TwilioService } from "../services/twilioService.js";
 import pool from "../config/db.js";
 import bcrypt from "bcrypt";
+import { 
+  verifyFirebaseToken, 
+  syncUserWithPostgreSQL, 
+  generateAppJWT 
+} from "../services/firebaseAuthService.js";
 
 // In-memory OTP store with 5-minute expiry
 const otpStore = {};
@@ -448,6 +453,192 @@ export const AuthController = {
       res.status(500).json({ 
         success: false, 
         message: "Internal server error" 
+      });
+    }
+  },
+
+  // POST /api/auth/firebase-login
+  async firebaseLogin(req, res) {
+    try {
+      const { idToken, role = 'buyer' } = req.body;
+
+      if (!idToken) {
+        return res.status(400).json({
+          success: false,
+          message: "Firebase ID token is required"
+        });
+      }
+
+      // Verify Firebase token
+      const firebaseUser = await verifyFirebaseToken(idToken);
+
+      // Sync user with PostgreSQL
+      const user = await syncUserWithPostgreSQL({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        phone_number: firebaseUser.phone_number,
+        display_name: firebaseUser.name || firebaseUser.email?.split('@')[0]
+      }, role);
+
+      // Generate app JWT
+      const appToken = generateAppJWT(user);
+
+      res.json({
+        success: true,
+        message: "Firebase authentication successful",
+        token: appToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          status: user.status,
+          firebase_uid: firebaseUser.uid
+        }
+      });
+    } catch (error) {
+      console.error("Error during Firebase login:", error);
+      res.status(401).json({
+        success: false,
+        message: error.message || "Firebase authentication failed"
+      });
+    }
+  },
+
+  // POST /api/auth/phone-otp-login
+  async phoneOTPLogin(req, res) {
+    try {
+      const { idToken } = req.body;
+
+      if (!idToken) {
+        return res.status(400).json({
+          success: false,
+          message: "Firebase ID token is required"
+        });
+      }
+
+      // Verify Firebase OTP token
+      const firebaseUser = await verifyFirebaseToken(idToken);
+
+      // Validate Iraq phone number
+      const phoneNumber = firebaseUser.phone_number;
+      if (!phoneNumber || !phoneNumber.startsWith('+964')) {
+        return res.status(400).json({
+          success: false,
+          message: "Only Iraq phone numbers are allowed"
+        });
+      }
+
+      // Normalize phone number
+      const normalizedPhone = normalizeIraqPhone(phoneNumber);
+      if (!normalizedPhone) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format"
+        });
+      }
+
+      // Sync user with PostgreSQL (create if new)
+      const user = await syncUserWithPostgreSQL({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || null,
+        phone_number: normalizedPhone,
+        display_name: firebaseUser.name || normalizedPhone
+      }, 'buyer'); // Default to buyer for phone OTP login
+
+      // Generate app JWT
+      const appToken = generateAppJWT(user);
+
+      res.json({
+        success: true,
+        message: "Phone OTP login successful",
+        token: appToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          status: user.status,
+          firebase_uid: firebaseUser.uid
+        }
+      });
+    } catch (error) {
+      console.error("Error during phone OTP login:", error);
+      res.status(401).json({
+        success: false,
+        message: error.message || "Phone OTP authentication failed"
+      });
+    }
+  },
+
+  // POST /api/auth/firebase-register
+  async firebaseRegister(req, res) {
+    try {
+      const { idToken, role = 'buyer' } = req.body;
+
+      if (!idToken) {
+        return res.status(400).json({
+          success: false,
+          message: "Firebase ID token is required"
+        });
+      }
+
+      // Validate role
+      if (!['buyer', 'seller'].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: "Role must be 'buyer' or 'seller'"
+        });
+      }
+
+      // Verify Firebase token
+      const firebaseUser = await verifyFirebaseToken(idToken);
+
+      // Check if user already exists
+      const existingUser = await pool.query(
+        "SELECT * FROM users WHERE firebase_uid = $1 OR email = $2",
+        [firebaseUser.uid, firebaseUser.email]
+      );
+
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "User already exists. Use login endpoint instead."
+        });
+      }
+
+      // Sync user with PostgreSQL (creates new user)
+      const user = await syncUserWithPostgreSQL({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        phone_number: firebaseUser.phone_number,
+        display_name: firebaseUser.name || firebaseUser.email?.split('@')[0]
+      }, role);
+
+      // Generate app JWT
+      const appToken = generateAppJWT(user);
+
+      res.status(201).json({
+        success: true,
+        message: "User registered successfully with Firebase",
+        token: appToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          status: user.status,
+          firebase_uid: firebaseUser.uid
+        }
+      });
+    } catch (error) {
+      console.error("Error during Firebase registration:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Firebase registration failed"
       });
     }
   }

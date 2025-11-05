@@ -7,6 +7,7 @@ const router = express.Router();
 // Protected routes
 router.get("/", verifyUser, NotificationsController.getNotifications);
 router.patch("/read/:id", verifyUser, NotificationsController.markAsRead);
+router.post("/token", verifyUser, NotificationsController.saveFCMToken);
 
 export default router;
 

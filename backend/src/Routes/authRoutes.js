@@ -13,6 +13,11 @@ router.post("/register", AuthController.register);
 router.post("/login", AuthController.login);
 router.post("/logout", verifyUser, AuthController.logout);
 
+// Firebase authentication routes
+router.post("/firebase-login", AuthController.firebaseLogin);
+router.post("/firebase-register", AuthController.firebaseRegister);
+router.post("/phone-otp-login", AuthController.phoneOTPLogin);
+
 // Profile routes (protected)
 router.get("/profile", verifyUser, AuthController.getProfile);
 router.patch("/profile", verifyUser, AuthController.updateProfile);

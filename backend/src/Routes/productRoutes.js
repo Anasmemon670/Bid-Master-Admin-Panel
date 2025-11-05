@@ -9,7 +9,7 @@ router.get("/", MobileProductController.getAllProducts);
 router.get("/:id", MobileProductController.getProductById);
 
 // Protected routes (seller only for create, user for mine)
-router.post("/create", verifyUser, MobileProductController.createProduct);
+router.post("/create", verifyUser, MobileProductController.uploadMiddleware, MobileProductController.createProduct);
 router.get("/mine", verifyUser, MobileProductController.getMyProducts);
 
 export default router;

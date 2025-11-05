@@ -1,4 +1,6 @@
 import pool from "../config/db.js";
+import { sendBidNotification } from "../services/fcmService.js";
+import { updateProductStatusInFirestore, updateAuctionEndTimeInFirestore } from "../services/firestoreService.js";
 
 export const ProductController = {
   // Get all products with filters
@@ -140,7 +142,31 @@ export const ProductController = {
         [req.user.id, id]
       );
 
-      res.json({ success: true, product: result.rows[0] });
+      const product = result.rows[0];
+
+      // Update Firestore
+      try {
+        await updateProductStatusInFirestore(id, 'approved');
+        if (product.auction_end_time) {
+          await updateAuctionEndTimeInFirestore(id, new Date(product.auction_end_time));
+        }
+      } catch (firestoreError) {
+        console.warn("Failed to update Firestore:", firestoreError);
+      }
+
+      // Send FCM notification to seller
+      try {
+        await sendBidNotification(
+          product.seller_id,
+          'product_approved',
+          { id: product.id, title: product.title },
+          {}
+        );
+      } catch (notificationError) {
+        console.warn("Failed to send approval notification:", notificationError);
+      }
+
+      res.json({ success: true, product: product });
     } catch (error) {
       console.error("Error approving product:", error);
       res.status(500).json({ error: "Failed to approve product" });
@@ -169,7 +195,28 @@ export const ProductController = {
         [req.user.id, id, JSON.stringify({ reason: reason || 'No reason provided' })]
       );
 
-      res.json({ success: true, product: result.rows[0] });
+      const product = result.rows[0];
+
+      // Update Firestore
+      try {
+        await updateProductStatusInFirestore(id, 'rejected');
+      } catch (firestoreError) {
+        console.warn("Failed to update Firestore:", firestoreError);
+      }
+
+      // Send FCM notification to seller
+      try {
+        await sendBidNotification(
+          product.seller_id,
+          'product_rejected',
+          { id: product.id, title: product.title },
+          { reason: reason || 'No reason provided' }
+        );
+      } catch (notificationError) {
+        console.warn("Failed to send rejection notification:", notificationError);
+      }
+
+      res.json({ success: true, product: product });
     } catch (error) {
       console.error("Error rejecting product:", error);
       res.status(500).json({ error: "Failed to reject product" });

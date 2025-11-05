@@ -1,11 +1,24 @@
 import pool from "../config/db.js";
+import { uploadFileToFirebase } from "../services/firebaseStorageService.js";
+import { initializeProductInFirestore } from "../services/firestoreService.js";
+import multer from "multer";
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+});
 
 export const MobileProductController = {
   // POST /api/products/create
+  // Expects multipart/form-data with image file or image_url in body
   async createProduct(req, res) {
     try {
       const { title, description, image_url, startingPrice, duration, category_id } = req.body;
       const sellerId = req.user.id;
+      const file = req.file; // Multer file object
 
       if (!title || !startingPrice) {
         return res.status(400).json({
@@ -27,10 +40,30 @@ export const MobileProductController = {
       const auctionEndTime = new Date();
       auctionEndTime.setDate(auctionEndTime.getDate() + days);
 
-      // Create product with status 'pending'
-      // Note: Handle image_url as string (can be JSON stringified array or single URL)
-      const imageUrlValue = Array.isArray(image_url) ? JSON.stringify(image_url) : (image_url || null);
+      let imageUrlValue = null;
 
+      // Handle image upload to Firebase Storage if file is provided
+      if (file) {
+        try {
+          const fileName = `products/${sellerId}/${Date.now()}_${file.originalname}`;
+          imageUrlValue = await uploadFileToFirebase(
+            file.buffer,
+            fileName,
+            file.mimetype
+          );
+        } catch (uploadError) {
+          console.error("Error uploading image to Firebase:", uploadError);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to upload image"
+          });
+        }
+      } else if (image_url) {
+        // Use provided image URL (can be JSON stringified array or single URL)
+        imageUrlValue = Array.isArray(image_url) ? JSON.stringify(image_url) : image_url;
+      }
+
+      // Create product with status 'pending'
       const result = await pool.query(
         `INSERT INTO products 
          (seller_id, title, description, image_url, starting_price, starting_bid, 
@@ -40,10 +73,20 @@ export const MobileProductController = {
         [sellerId, title, description || null, imageUrlValue, startingPrice, auctionEndTime, category_id || null]
       );
 
+      const product = result.rows[0];
+
+      // Initialize product in Firestore for real-time updates
+      try {
+        await initializeProductInFirestore(product);
+      } catch (firestoreError) {
+        console.warn("Failed to initialize product in Firestore:", firestoreError);
+        // Don't fail the request if Firestore fails
+      }
+
       res.status(201).json({
         success: true,
         message: "Product created successfully and pending approval",
-        data: result.rows[0]
+        data: product
       });
     } catch (error) {
       console.error("Error creating product:", error);
@@ -53,6 +96,9 @@ export const MobileProductController = {
       });
     }
   },
+
+  // Multer middleware for file upload
+  uploadMiddleware: upload.single('image'),
 
   // GET /api/products/mine
   async getMyProducts(req, res) {

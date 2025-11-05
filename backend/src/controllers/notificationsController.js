@@ -1,4 +1,5 @@
 import pool from "../config/db.js";
+import { saveFCMToken as saveFCMTokenService } from "../services/fcmService.js";
 
 export const NotificationsController = {
   // GET /api/notifications
@@ -68,6 +69,34 @@ export const NotificationsController = {
       });
     } catch (error) {
       console.error("Error updating notification:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    }
+  },
+
+  // POST /api/notifications/token
+  async saveFCMToken(req, res) {
+    try {
+      const { fcmToken } = req.body;
+      const userId = req.user.id;
+
+      if (!fcmToken) {
+        return res.status(400).json({
+          success: false,
+          message: "FCM token is required"
+        });
+      }
+
+      await saveFCMTokenService(userId, fcmToken);
+
+      res.json({
+        success: true,
+        message: "FCM token saved successfully"
+      });
+    } catch (error) {
+      console.error("Error saving FCM token:", error);
       res.status(500).json({
         success: false,
         message: "Internal server error"
