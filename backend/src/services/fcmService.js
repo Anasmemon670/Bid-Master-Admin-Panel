@@ -31,14 +31,15 @@ export const sendFCMNotification = async (fcmToken, notification, data = {}) => 
       apns: {
         headers: {
           'apns-priority': '10',
-        payload: {
-          aps: {
-            sound: 'default',
-            badge: 1,
+          payload: {
+            aps: {
+              sound: 'default',
+              badge: 1,
+            },
           },
         },
       },
-    };
+    }
 
     const response = await admin.messaging().send(message);
     console.log("Successfully sent FCM message:", response);
@@ -102,7 +103,7 @@ export const saveFCMToken = async (userId, fcmToken) => {
     // Check if user has FCM tokens table column or separate table
     // For now, we'll use a simple approach - update user table if column exists
     // Or create a separate fcm_tokens table
-    
+
     // Check if fcm_tokens table exists, if not we'll handle it gracefully
     await pool.query(
       `INSERT INTO fcm_tokens (user_id, token, created_at) 
@@ -137,21 +138,21 @@ export const getFCMTokens = async (userId) => {
       "SELECT token FROM fcm_tokens WHERE user_id = $1",
       [userId]
     );
-    
+
     if (result.rows.length > 0) {
       return result.rows.map(row => row.token);
     }
-    
+
     // Fallback: try to get from users table
     const userResult = await pool.query(
       "SELECT fcm_token FROM users WHERE id = $1 AND fcm_token IS NOT NULL",
       [userId]
     );
-    
+
     if (userResult.rows.length > 0 && userResult.rows[0].fcm_token) {
       return [userResult.rows[0].fcm_token];
     }
-    
+
     return [];
   } catch (error) {
     console.warn("Error getting FCM tokens:", error.message);
@@ -251,4 +252,3 @@ export const sendBidNotification = async (userId, type, productData, bidData = {
     // Don't throw - notification failure shouldn't break the main flow
   }
 };
-

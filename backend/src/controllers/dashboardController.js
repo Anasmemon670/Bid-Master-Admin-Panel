@@ -4,6 +4,21 @@ export const DashboardController = {
   // Get comprehensive dashboard stats
   async getDashboard(req, res) {
     try {
+      // Check if columns exist
+      const [paymentStatusCheck, entityTypeCheck] = await Promise.all([
+        pool.query(`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'orders' AND column_name = 'payment_status'
+        `).catch(() => ({ rows: [] })),
+        pool.query(`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'admin_activity_log' AND column_name = 'entity_type'
+        `).catch(() => ({ rows: [] }))
+      ]);
+
+      const hasPaymentStatus = paymentStatusCheck.rows.length > 0;
+      const hasEntityType = entityTypeCheck.rows.length > 0;
+
       // Get all stats in parallel for better performance
       const [
         usersCount,
@@ -24,16 +39,25 @@ export const DashboardController = {
           WHERE status = 'approved' AND auction_end_time > NOW()
         `),
         pool.query("SELECT COUNT(*) as count FROM orders"),
-        pool.query(`
-          SELECT COALESCE(SUM(amount), 0) as total FROM orders 
-          WHERE payment_status = 'completed'
-        `),
-        pool.query(`
-          SELECT action, entity_type, created_at, admin_id 
-          FROM admin_activity_log 
-          ORDER BY created_at DESC 
-          LIMIT 10
-        `)
+        hasPaymentStatus 
+          ? pool.query(`
+              SELECT COALESCE(SUM(amount), 0) as total FROM orders 
+              WHERE payment_status = 'completed'
+            `)
+          : pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM orders"),
+        hasEntityType
+          ? pool.query(`
+              SELECT action, entity_type, created_at, admin_id 
+              FROM admin_activity_log 
+              ORDER BY created_at DESC 
+              LIMIT 10
+            `)
+          : pool.query(`
+              SELECT action, 'system' as entity_type, created_at, admin_id 
+              FROM admin_activity_log 
+              ORDER BY created_at DESC 
+              LIMIT 10
+            `).catch(() => ({ rows: [] }))
       ]);
 
       // Calculate user growth (last month)
@@ -78,6 +102,15 @@ export const DashboardController = {
     try {
       const { period = 'week' } = req.query;
       
+      // Check if payment_status column exists
+      const paymentStatusCheck = await pool.query(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'orders' AND column_name = 'payment_status'
+      `).catch(() => ({ rows: [] }));
+      
+      const hasPaymentStatus = paymentStatusCheck.rows.length > 0;
+      const paymentFilter = hasPaymentStatus ? "AND payment_status = 'completed'" : "";
+      
       let revenueQuery, bidsQuery;
       
       if (period === 'week') {
@@ -87,7 +120,7 @@ export const DashboardController = {
             COALESCE(SUM(amount), 0) as revenue
           FROM orders 
           WHERE created_at >= NOW() - INTERVAL '7 days'
-            AND payment_status = 'completed'
+            ${paymentFilter}
           GROUP BY DATE(created_at)
           ORDER BY date ASC
         `;
@@ -108,7 +141,7 @@ export const DashboardController = {
             COALESCE(SUM(amount), 0) as revenue
           FROM orders 
           WHERE created_at >= NOW() - INTERVAL '12 months'
-            AND payment_status = 'completed'
+            ${paymentFilter}
           GROUP BY DATE_TRUNC('month', created_at)
           ORDER BY date ASC
         `;
